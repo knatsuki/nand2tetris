@@ -1,0 +1,18 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/02/Inc16.hdl
+
+/**
+ * 16-bit Is-Zero check:
+ * out == 1 if input if zero
+ */
+
+CHIP IsZero16 {
+  IN in[16]; // 16-bit input
+  OUT out; // 1-bit output
+
+  PARTS:
+  Or16Way(in=in, out=o);
+  Not(in=o, out=out);
+}

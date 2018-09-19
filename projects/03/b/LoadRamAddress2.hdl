@@ -1,0 +1,18 @@
+// This file is part of www.nand2tetris.org
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/a/RAM8.hdl
+
+/**
+  Checks for computing load input for RAM's registry corresponding to address in[2]
+ */
+
+CHIP LoadRamAddress2 {
+  IN in[2], in0, in1, load;
+  OUT out;
+
+  PARTS:
+    Equality2(in=in, in0=in0, in1=in1, out=isEqual);
+    And(a=isEqual, b=load, out=out);
+}

@@ -1,0 +1,43 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/a/RAM8.hdl
+
+/**
+ * Memory of 8 registers, each 16 bit-wide. Out holds the value
+ * stored at the memory location specified by address. If load==1, then 
+ * the in value is loaded into the memory location specified by address 
+ * (the loaded value will be emitted to out from the next time step onward).
+ */
+
+CHIP RAM8 {
+  IN in[16], load, address[3];
+  OUT out[16];
+
+  PARTS:
+  LoadRamAddress3(in=address, in0=false, in1=false, in2=false, load=load, out=load000);
+  Register(in=in, load=load000, out=out000);
+  
+  LoadRamAddress3(in=address, in0=true, in1=false, in2=false, load=load, out=load001);
+  Register(in=in, load=load001, out=out001);
+  
+  LoadRamAddress3(in=address, in0=false, in1=true, in2=false, load=load, out=load010);
+  Register(in=in, load=load010, out=out010);
+  
+  LoadRamAddress3(in=address, in0=true, in1=true, in2=false, load=load, out=load011);
+  Register(in=in, load=load011, out=out011);
+  
+  LoadRamAddress3(in=address, in0=false, in1=false, in2=true, load=load, out=load100);
+  Register(in=in, load=load100, out=out100);
+  
+  LoadRamAddress3(in=address, in0=true, in1=false, in2=true, load=load, out=load101);
+  Register(in=in, load=load101, out=out101);
+  
+  LoadRamAddress3(in=address, in0=false, in1=true, in2=true, load=load, out=load110);
+  Register(in=in, load=load110, out=out110);
+  
+  LoadRamAddress3(in=address, in0=true, in1=true, in2=true, load=load, out=load111);
+  Register(in=in, load=load111, out=out111);
+  //
+  Mux8Way16(a=out000, b=out001, c=out010, d=out011, e=out100, f=out101, g=out110, h=out111, sel=address, out=out);
+}

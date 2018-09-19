@@ -1,0 +1,20 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/a/RAM8.hdl
+
+/**
+  Checks for equality for 3-bit array against three unit inputs
+ */
+
+CHIP Equality3 {
+  IN in[3], in0, in1, in2;
+  OUT out;
+
+  PARTS:
+    Equality(a=in[0], b=in0, out=c0);
+    Equality(a=in[1], b=in1, out=c1);
+    Equality(a=in[2], b=in2, out=c2);
+    And(a=c0, b=c1, out=c01);
+    And(a=c01, b=c2, out=out);
+}

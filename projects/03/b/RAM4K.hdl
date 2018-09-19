@@ -1,0 +1,43 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/b/RAM4K.hdl
+
+/**
+ * Memory of 4K registers, each 16 bit-wide. Out holds the value
+ * stored at the memory location specified by address. If load==1, then 
+ * the in value is loaded into the memory location specified by address 
+ * (the loaded value will be emitted to out from the next time step onward).
+ */
+
+CHIP RAM4K {
+    IN in[16], load, address[12];
+    OUT out[16];
+
+    PARTS:
+    LoadRamAddress3(in=address[9..11], in0=false, in1=false, in2=false, load=load, out=load000);
+    RAM512(in=in, address=address[0..8], load=load000, out=out000);
+    
+    LoadRamAddress3(in=address[9..11], in0=true, in1=false, in2=false, load=load, out=load001);
+    RAM512(in=in, address=address[0..8], load=load001, out=out001);
+    
+    LoadRamAddress3(in=address[9..11], in0=false, in1=true, in2=false, load=load, out=load010);
+    RAM512(in=in, address=address[0..8], load=load010, out=out010);
+    
+    LoadRamAddress3(in=address[9..11], in0=true, in1=true, in2=false, load=load, out=load011);
+    RAM512(in=in, address=address[0..8], load=load011, out=out011);
+    
+    LoadRamAddress3(in=address[9..11], in0=false, in1=false, in2=true, load=load, out=load100);
+    RAM512(in=in, address=address[0..8], load=load100, out=out100);
+    
+    LoadRamAddress3(in=address[9..11], in0=true, in1=false, in2=true, load=load, out=load101);
+    RAM512(in=in, address=address[0..8], load=load101, out=out101);
+    
+    LoadRamAddress3(in=address[9..11], in0=false, in1=true, in2=true, load=load, out=load110);
+    RAM512(in=in, address=address[0..8], load=load110, out=out110);
+    
+    LoadRamAddress3(in=address[9..11], in0=true, in1=true, in2=true, load=load, out=load111);
+    RAM512(in=in, address=address[0..8], load=load111, out=out111);
+    //
+    Mux8Way16(a=out000, b=out001, c=out010, d=out011, e=out100, f=out101, g=out110, h=out111, sel=address[9..11], out=out);
+}

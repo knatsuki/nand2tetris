@@ -1,0 +1,59 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/Memory.hdl
+
+/**
+ * The complete address space of the Hack computer's memory,
+ * including RAM and memory-mapped I/O. 
+ * The chip facilitates read and write operations, as follows:
+ *     Read:  out(t) = Memory[address(t)](t)
+ *     Write: if load(t-1) then Memory[address(t-1)](t) = in(t-1)
+ * In words: the chip always outputs the value stored at the memory 
+ * location specified by address. If load==1, the in value is loaded 
+ * into the memory location specified by address. This value becomes 
+ * available through the out output from the next time step onward.
+ * Address space rules:
+ * Only the upper 16K+8K+1 words of the Memory chip are used. 
+ * Access to address>0x6000 is invalid. Access to any address in 
+ * the range 0x4000-0x5FFF results in accessing the screen memory 
+ * map. Access to address 0x6000 results in accessing the keyboard 
+ * memory map. The behavior in these addresses is described in the 
+ * Screen and Keyboard chip specifications given in the book.
+ */
+
+CHIP Memory {
+  IN in[16], address[15], load;
+  OUT out[16];
+
+  PARTS:
+  // RAM16K output
+  Not(in=address[14], out=isRam16kAddress);
+  And(a=load, b=isRam16kAddress, out=ram16kLoad);
+  RAM16K(in=in, load=ram16kLoad, address=address[0..13], out=ram16kOut);
+  // Screen output  
+  And(a=load, b=address[14], out=screenLoad);
+  Screen(in=in, load=screenLoad, address=address[0..12], out=screenOut);
+  // Keyboard output
+  Keyboard(out=keyboardOut);
+
+  // keyboard or screen output selector
+  And(a=address[14], b=address[13], out=address1314);
+  Not(in=address1314, out=notAddress1314);
+  Or(a=address[0], b=address[1], out=or01);
+  Or(a=or01, b=address[2], out=or012);
+  Or(a=or012, b=address[3], out=or0123);
+  Or(a=or0123, b=address[4], out=or01234);
+  Or(a=or01234, b=address[5], out=or012345);
+  Or(a=or012345, b=address[6], out=or0123456);
+  Or(a=or0123456, b=address[7], out=or01234567);
+  Or(a=or01234567, b=address[8], out=or012345678);
+  Or(a=or012345678, b=address[9], out=or0123456789);
+  Or(a=or0123456789, b=address[10], out=or012345678910);
+  Or(a=or012345678910, b=address[11], out=or01234567891011);
+  Or(a=or01234567891011, b=address[12], out=or0123456789101112);
+  Or(a=or0123456789101112, b=notAddress1314, out=is24576);
+
+  Mux16(a=keyboardOut, b=screenOut, sel=is24576, out=sk);
+  Mux16(a=ram16kOut, b=sk, sel=address[14], out=out);
+}
