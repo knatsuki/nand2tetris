@@ -20,7 +20,6 @@ class CompilationEngine
 
   def compile_class
     write_non_terminal_begin_xml('class')
-
     compile_first_token_for('class')
     compile_class_name
     compile_token('{')    
@@ -39,6 +38,7 @@ class CompilationEngine
     compile_first_token_for('class_var_dec')
     compile_type
     compile_var_name('+')
+    compile_token(';')
 
     write_non_terminal_end_xml('classVarDec')
 
@@ -76,7 +76,7 @@ class CompilationEngine
 
     compile_first_token_for('subroutine_dec')
 
-    if (!token_is?('void') && !starting_token_for?(type)) 
+    if (!token_is?('void') && !starting_token_for?('type')) 
       raise 'Expected (void || type)'
     end
 
@@ -90,8 +90,7 @@ class CompilationEngine
     compile_subroutine_body
 
     write_non_terminal_end_xml('subroutineDec')
-
-    repeat_with_comma?(opt) { compile_subroutine_dec('+') }
+    compile_subroutine_dec(opt) if repeat?(opt)
   end
 
   def compile_subroutine_body
