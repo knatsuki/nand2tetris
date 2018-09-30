@@ -1,92 +1,151 @@
 # Parse content of Jack file into atomic terminal elements
 class JackTokenizer
   KEYWORD_REGEX = /\A(?:class|constructor|function|method|field|static|var|int|char|boolean|void|true|false|null|this|let|do|if|else|while|return)\z/
-  SYMBOL_REGEX = /\A[\{\}\(\)\[\]\.\,\;\+\-\*\/\&\|\<\>\=\~]\z/
-  INTEGER_CONSTANT_REGEX = /\A[1-9]\d+\z/
-  STRING_CONSTANT_REGEX = /\A\"(.*?)\"\z/
-  IDENTIFIER_REGEX = /\A[_a-zA-Z]\w*/
+  SYMBOL_REGEX = /[\{\}\(\)\[\]\.\,\;\+\-\*\/\&\|\<\>\=\~]/
+  # INTEGER_CONSTANT_REGEX = /\A[1-9]\d+\z/
+  # STRING_CONSTANT_REGEX = /\A\"(.*?)\"\z/
+  # IDENTIFIER_REGEX = /\A[_a-zA-Z]\w*/
+  QUOTE_REGEX = /\"/
+  DIGIT_REGEX = /[0-9]/
+  NON_ZERO_DIGIT_REGEX = /[1-9]/
+  WORD_REGEX = /\w/
+  NON_DIGIT_WORD_REGEX = /[_a-zA-Z]/
   COMMENTS_REGEX = /\/\/.*\n|\/\*.*?\*\//
   WHITESPACE_REGEX = /\s/
 
-  def initializer(file_texts)
-    @unparsed_texts = file_texts.gsub(COMMENTS_REGEX, '').strip
-    @current_token = nil
+  TERMINAL = {
+    :KEYWORD => 'keyword',
+    :SYMBOL => 'symbol',
+    :STRING => 'stringConstant',
+    :INTEGER => 'integerConstant',
+    :IDENTIFIER => 'identifier',
+  }
+
+  KEYWORD = {
+    :class => 'class',
+    :constructor => 'constructor',
+    :function => 'function',
+    :method => 'method',
+    :field => 'field',
+    :static => 'static',
+    :var => 'var',
+    :int => 'int',
+    :char => 'char',
+    :boolean => 'boolean',
+    :void => 'void',
+    :true => 'true',
+    :false => 'false',
+    :null => 'null',
+    :this => 'this',
+    :let => 'let',
+    :do => 'do',
+    :if => 'if',
+    :else => 'else',
+    :while => 'while',
+    :return => 'return',
+  }
+
+  def initialize(file_texts)
+    @remaining_characters = file_texts.gsub(COMMENTS_REGEX, '').strip
+    @token = ''
+    @token_type = nil
   end
 
-  def current_token
-    @current_token
+  def token
+    @token
   end
 
   def has_more_token?
-    @file_texts.size > 0
+    @remaining_characters.size > 0
   end
 
   def advance
-    @current_token.clear
-    keep_iterating = true
-    while(keep_iterating)
-      append_to_current_token
+    token.clear
 
-      if symbol_terminal?
-        keep_iterating = false
-      elsif integer_terminal?
-        keep_iterating = false
-      elsif string_terminal?
-        keep_iterating = false
-      elsif keyword_terminal?
-        keep_iterating = false
-      elsif identifier_terminal?
-        keep_iterating = false
-      end        
+    if !has_more_token? 
+      @token_type = nil
+      return
+    end
+    
+    # mine until first non-whitespace character is found
+    mining = true
+    while (mining)
+      rnc = retrieve_next_character
+
+      if (!!rnc[WHITESPACE_REGEX]) # skip any whitespace character
+        next 
+      else
+        token << rnc
+        mining = false
+      end
+    end
+
+    if (token[SYMBOL_REGEX])
+      @token_type = TERMINAL[:SYMBOL]
+    elsif token[DIGIT_REGEX]
+      if token[/0/]
+        inc = inspect_next_character        
+        if (inc[WHITESPACE_REGEX] || inc[SYMBOL_REGEX])
+          @token_type = TERMINAL[:INTEGER]
+          mining = false
+        else
+          raise 'invalid numeric constant'
+        end
+      else
+        mining = true
+        while (mining)
+          inc = inspect_next_character
+          if (inc[DIGIT_REGEX])
+            token << retrieve_next_character
+          elsif (inc[WHITESPACE_REGEX] || inc[SYMBOL_REGEX])
+            @token_type = TERMINAL[:INTEGER]
+            mining = false
+          else
+            raise 'invalid numeric constant'
+          end
+        end        
+      end
+    elsif token[QUOTE_REGEX]
+      mining = true
+      while (mining)
+        rnc = retrieve_next_character
+        token << rnc
+        if (rnc[QUOTE_REGEX])
+          @token_type = TERMINAL[:STRING]
+          mining = false
+        end
+      end
+    elsif token[NON_DIGIT_WORD_REGEX]
+      mining = true
+      while (mining)
+        inc = inspect_next_character
+
+        if (!inc[WORD_REGEX])
+          if(token[KEYWORD_REGEX])
+            @token_type = TERMINAL[:KEYWORD]
+          else
+            @token_type = TERMINAL[:IDENTIFIER]
+          end
+          mining = false
+        else
+          rnc = retrieve_next_character
+          token << rnc          
+        end
+      end
     end
   end
 
   def token_type
-
+    @token_type
   end
 
   private
 
-  def append_to_current_token
-    @current_token << @unparsed_texts.slice!(0)
+  def retrieve_next_character
+    @remaining_characters.slice!(0)
   end
 
-  def next_char_is_word_character?
-    @unparsed_texts[0][/\w/]
-  end
-
-  def keyword_terminal?
-    !!current_token[KEYWORD_REGEX] && !next_char_is_word_character?
-  end
-
-  def symbol_terminal?
-    current_token.size  == 0 && !!current_token[SYMBOL_REGEX]
-  end
-
-  def integer_terminal?
-    !!current_token[INTEGER_CONSTANT_REGEX]
-  end
-
-  def string_terminal?
-    !!current_token[STRING_CONSTANT_REGEX]
-  end
-
-  def identifier_terminal?
-    !!current_token[IDENTIFIER_REGEX] && 
-    !current_token[KEYWORD_REGEX] && 
-    !next_char_is_word_character?
-  end
-
-
-
-  # File-related methods
-  # ~~~~~~~~~~~~~~~~~~~~
-
-  def end_of_file_stream?
-    @current_line.nil?
-  end
-
-  def clean_up_yo_line(str)
-
+  def inspect_next_character
+    @remaining_characters[0]
   end
 end
