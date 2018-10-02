@@ -1,9 +1,19 @@
 require_relative './JackTokenizer'
+require_relative './VMWriter'
+require_relative './SymbolTable'
 
 class CompilationEngine 
-  def initialize(file_texts:, write_file:)
+  def initialize(file_texts:, xml_file:, vm_file:)
     @tokenizer = JackTokenizer.new(file_texts)
-    @write_file = write_file
+    @xml_file = xml_file
+    @vm_writer = VMWriter.new(vm_file)
+    # SymbolTable-related fields
+    @symbol_table = SymbolTable.new
+    @current_class_name = ''
+    @current_subroutine_name = ''
+    @current_symbol_type = ''
+    @current_symbol_kind = ''
+    @current_symbol_name = ''
 
     tokenizer.advance
 
@@ -14,12 +24,12 @@ class CompilationEngine
     @tokenizer
   end
 
-  def write_file
-    @write_file
+  def xml_file
+    @xml_file
   end
 
   def compile_class
-    write_non_terminal_begin_xml('class')
+    begin_terminal('class')
     compile_first_token_for('class')
     compile_class_name
     compile_token('{')    
@@ -27,20 +37,20 @@ class CompilationEngine
     compile_subroutine_dec('*')
     compile_token('}')
 
-    write_non_terminal_end_xml('class')
+    end_terminal('class')
   end
 
   def compile_class_var_dec(opt = nil)
     return if (optional?(opt) && !starting_token_for?('class_var_dec'))
     
-    write_non_terminal_begin_xml('classVarDec')
+    begin_terminal('classVarDec')
 
     compile_first_token_for('class_var_dec')
     compile_type
     compile_var_name('+')
     compile_token(';')
 
-    write_non_terminal_end_xml('classVarDec')
+    end_terminal('classVarDec')
 
     if (repeat?(opt) && starting_token_for?('class_var_dec')) 
         compile_class_var_dec(opt)
@@ -48,17 +58,24 @@ class CompilationEngine
   end
 
   def compile_type
+    set_current_type
+
     compile_first_token_for('type')
   end
 
   def compile_class_name(opt = nil)
     return if (optional?(opt) && !starting_token_for?('class_name'))
 
+    set_current_class_name
+
     compile_first_token_for('class_name')
   end
 
-  def compile_var_name(opt = nil)
+  def compile_var_name(opt = nil, skip_symbol_table = false)
     return if (optional?(opt) && !starting_token_for?('var_name'))
+
+    set_current_name
+    define_in_symbol_table unless skip_symbol_table
 
     compile_first_token_for('var_name')
 
@@ -66,55 +83,66 @@ class CompilationEngine
   end
 
   def compile_subroutine_name()
+    set_current_subroutine_name
     compile_first_token_for('subroutine_name')
   end
 
   def compile_subroutine_dec(opt = nil)
     return if (optional?(opt) && !starting_token_for?('subroutine_dec'))
 
-    write_non_terminal_begin_xml('subroutineDec')
+    begin_terminal('subroutineDec')
+    initialize_symbol_table_subroutine
 
     compile_first_token_for('subroutine_dec')
 
     if (!token_is?('void') && !starting_token_for?('type')) 
       raise 'Expected (void || type)'
     end
-
     write_terminal_xml
     tokenizer.advance
 
     compile_subroutine_name
+
     compile_token('(')
     compile_parameter_list
     compile_token(')')
+
     compile_subroutine_body
 
-    write_non_terminal_end_xml('subroutineDec')
+    end_terminal('subroutineDec')
     compile_subroutine_dec(opt) if repeat?(opt)
   end
 
   def compile_subroutine_body
-    write_non_terminal_begin_xml('subroutineBody')
+    begin_terminal('subroutineBody')
 
     compile_first_token_for('subroutine_body')
     compile_var_dec('*')
+
+    @vm_writer.write_function(
+      "#{@current_class_name}.#{@current_subroutine_name}", 
+      @symbol_table.num_locals
+    )
+
     compile_statements
     compile_token('}')
 
-    write_non_terminal_end_xml('subroutineBody')
+    end_terminal('subroutineBody')
   end
 
   def compile_parameter_list
-    write_non_terminal_begin_xml('parameterList')
+    begin_terminal('parameterList')
     
     if (!starting_token_for?('parameter_list')) 
-      write_non_terminal_end_xml('parameterList')
+      end_terminal('parameterList')
       return
     end
 
+    set_current_kind('arg')
+
     compile_type_var_name('*')
 
-    write_non_terminal_end_xml('parameterList')
+    end_terminal('parameterList')
   end
 
   def compile_type_var_name(opt = nil)
@@ -131,24 +159,26 @@ class CompilationEngine
   def compile_var_dec(opt = nil)
     return if (optional?(opt) && !starting_token_for?('var_dec'))
 
-    write_non_terminal_begin_xml('varDec')
+    begin_terminal('varDec')
+
+    set_current_kind('var')
 
     compile_first_token_for('var_dec')
     compile_type
     compile_var_name('+')
     compile_token(';')
 
-    write_non_terminal_end_xml('varDec')
+    end_terminal('varDec')
 
     compile_var_dec(opt) if repeat?(opt) 
   end
 
   def compile_statements
-    write_non_terminal_begin_xml('statements')
+    begin_terminal('statements')
 
     compile_statement('*')
 
-    write_non_terminal_end_xml('statements')
+    end_terminal('statements')
   end
 
   def compile_statement(opt = nil)
@@ -172,20 +202,20 @@ class CompilationEngine
   end
 
   def compile_do
-    write_non_terminal_begin_xml('doStatement')
+    begin_terminal('doStatement')
 
     compile_first_token_for('do')
     compile_subroutine_call
     compile_token(';')
 
-    write_non_terminal_end_xml('doStatement')
+    end_terminal('doStatement')
   end
 
   def compile_let
-    write_non_terminal_begin_xml('letStatement')
+    begin_terminal('letStatement')
 
     compile_first_token_for('let')
-    compile_var_name
+    compile_var_name(nil, true)
 
     if (token_is?('['))
       compile_token('[')
@@ -197,11 +227,11 @@ class CompilationEngine
     compile_expression
     compile_token(';')
 
-    write_non_terminal_end_xml('letStatement')
+    end_terminal('letStatement')
   end
 
   def compile_while
-    write_non_terminal_begin_xml('whileStatement')
+    begin_terminal('whileStatement')
 
     compile_first_token_for('while')
     compile_token('(')
@@ -211,21 +241,21 @@ class CompilationEngine
     compile_statements
     compile_token('}')
 
-    write_non_terminal_end_xml('whileStatement')
+    end_terminal('whileStatement')
   end
 
   def compile_return
-    write_non_terminal_begin_xml('returnStatement')
+    begin_terminal('returnStatement')
 
     compile_first_token_for('return')    
     compile_expression('?')
     compile_token(';')
 
-    write_non_terminal_end_xml('returnStatement')
+    end_terminal('returnStatement')
   end
 
   def compile_if
-    write_non_terminal_begin_xml('ifStatement')
+    begin_terminal('ifStatement')
 
     compile_first_token_for('if')
     compile_token('(')
@@ -242,13 +272,13 @@ class CompilationEngine
       compile_token('}')
     end
 
-    write_non_terminal_end_xml('ifStatement')
+    end_terminal('ifStatement')
   end
 
   def compile_expression(opt = nil)
     return if (optional?(opt) && !starting_token_for?('expression'))
 
-    write_non_terminal_begin_xml('expression')
+    begin_terminal('expression')
 
     compile_term
 
@@ -256,20 +286,20 @@ class CompilationEngine
 
     repeat_with_comma?(opt) { compile_expression('+') } 
 
-    write_non_terminal_end_xml('expression')
+    end_terminal('expression')
 
   end
 
   def compile_expression_list
-    write_non_terminal_begin_xml('expressionList')
+    begin_terminal('expressionList')
 
     compile_expression('*')
 
-    write_non_terminal_end_xml('expressionList')
+    end_terminal('expressionList')
   end
 
   def compile_term
-    write_non_terminal_begin_xml('term')
+    begin_terminal('term')
 
     if starting_token_for?('unary_op')
       compile_unary_op
@@ -303,7 +333,7 @@ class CompilationEngine
       compile_first_token_for('term')
     end
 
-    write_non_terminal_end_xml('term')
+    end_terminal('term')
   end
 
   def compile_unary_op
@@ -337,30 +367,30 @@ class CompilationEngine
   private
   def write_terminal_xml
     if tokenizer.token == '<'
-      write_file.puts(
+      xml_file.puts(
         "<#{tokenizer.token_type}> &lt </#{tokenizer.token_type}>" 
       )
     elsif tokenizer.token == '>'
-      write_file.puts(
+      xml_file.puts(
         "<#{tokenizer.token_type}> &gt </#{tokenizer.token_type}>" 
       )
     elsif tokenizer.token == '&'
-      write_file.puts(
+      xml_file.puts(
         "<#{tokenizer.token_type}> &amp </#{tokenizer.token_type}>" 
       )
     else
-      write_file.puts(
+      xml_file.puts(
         "<#{tokenizer.token_type}> #{tokenizer.token} </#{tokenizer.token_type}>" 
       )
     end
   end
 
-  def write_non_terminal_begin_xml(tag_name)
-    write_file.puts("<#{tag_name}>")
+  def begin_terminal(tag_name)
+    xml_file.puts("<#{tag_name}>")
   end
 
-  def write_non_terminal_end_xml(tag_name)
-    write_file.puts("</#{tag_name}>")
+  def end_terminal(tag_name)
+    xml_file.puts("</#{tag_name}>")
   end
 
   def compile_token(token)
@@ -481,5 +511,39 @@ class CompilationEngine
       starting_token_for?('class_name') ||
       starting_token_for?('var_name')
     end
+  end
+
+  def set_current_class_name
+
+    @current_class_name = @tokenizer.token
+  end
+
+  def set_current_subroutine_name
+    @current_subroutine_name = @tokenizer.token
+  end
+
+  def set_current_type
+    @current_symbol_type = @tokenizer.token
+  end
+
+  def set_current_name
+    @current_symbol_name = @tokenizer.token
+  end
+
+  def set_current_kind(dec_type)
+    @current_symbol_kind = dec_type.upcase
+  end
+
+  def initialize_symbol_table_subroutine()
+    @symbol_table.start_subroutine
+  end
+
+  def define_in_symbol_table
+    @symbol_table.define({
+      name: @current_symbol_name,
+      kind: @current_symbol_kind,
+      type: @current_symbol_type
+
+    })
   end
 end

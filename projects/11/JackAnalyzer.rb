@@ -11,14 +11,18 @@ module JackAnalyzer
         # open input file
         jack_file_string = File.read(jack_file_path)
         # create output file
-        output_file_path = jack_file_path[/(.+).jack/].gsub(/.jack/, '') + 'Compiled' +'.xml'
-        output_file = File.new(output_file_path, 'w+')
+        output_file_path_1 = jack_file_path[/(.+).jack/].gsub(/.jack/, '') + 'Compiled' +'.xml'
+        output_file_path_2 = jack_file_path[/(.+).jack/].gsub(/.jack/, '') + 'Compiled' +'.vm'
+        output_file_1 = File.new(output_file_path_1, 'w+')
+        output_file_2 = File.new(output_file_path_2, 'w+')
         CompilationEngine.new(
           file_texts: jack_file_string,
-          write_file: output_file,
+          xml_file: output_file_1,
+          vm_file: output_file_2,
         )
 
-        output_file.close
+        output_file_1.close
+        output_file_2.close
       end
 
     rescue StandardError => e

@@ -10,7 +10,7 @@ class JackTokenizer
   NON_ZERO_DIGIT_REGEX = /[1-9]/
   WORD_REGEX = /\w/
   NON_DIGIT_WORD_REGEX = /[_a-zA-Z]/
-  COMMENTS_REGEX = /\/\/.*\n|\/\*.*?\*\//
+  COMMENTS_REGEX = /\/\/.*\n|(?m)\/\*.*?\*\//
   WHITESPACE_REGEX = /\s/
 
   TERMINAL = {
@@ -60,7 +60,7 @@ class JackTokenizer
   end
 
   def advance
-    token.clear
+    @token = ''
 
     if !has_more_token? 
       @token_type = nil
