@@ -206,6 +206,7 @@ class CompilationEngine
 
     compile_first_token_for('do')
     compile_subroutine_call
+
     compile_token(';')
 
     end_terminal('doStatement')
@@ -214,10 +215,10 @@ class CompilationEngine
   def compile_let
     begin_terminal('letStatement')
 
-    compile_first_token_for('let')
-    compile_var_name(nil, true)
+      compile_first_token_for('let')
+      compile_var_name(nil, true)
 
-    if (token_is?('['))
+      if (token_is?('['))
       compile_token('[')
       compile_expression
       compile_token(']')
@@ -251,6 +252,8 @@ class CompilationEngine
     compile_expression('?')
     compile_token(';')
 
+    @vm_writer.write_return
+    
     end_terminal('returnStatement')
   end
 
@@ -276,26 +279,38 @@ class CompilationEngine
   end
 
   def compile_expression(opt = nil)
-    return if (optional?(opt) && !starting_token_for?('expression'))
+    expression_count = 0
+    return expression_count if (optional?(opt) && !starting_token_for?('expression'))
 
     begin_terminal('expression')
 
     compile_term
 
-    repeat_with_op?('*') { compile_term }
+    repeat_with_op?('*') do |operator|
+      compile_term 
 
-    repeat_with_comma?(opt) { compile_expression('+') } 
+      if operator == '*'
+        @vm_writer.write_call('Math.multiply', 2)
+      else
+        @vm_writer.write_arithmetic(operator_map(operator))
+      end
+    end
+
+    repeat_with_comma?(opt) { expression_count = compile_expression('+') } 
 
     end_terminal('expression')
 
+    return expression_count + 1
   end
 
   def compile_expression_list
     begin_terminal('expressionList')
 
-    compile_expression('*')
+    expression_count = compile_expression('*')
 
     end_terminal('expressionList')
+
+    return expression_count
   end
 
   def compile_term
@@ -329,6 +344,9 @@ class CompilationEngine
         compile_expression_list
         compile_token(')')        
       end
+    elsif token_type_is?(:INTEGER)
+      @vm_writer.write_push('constant', @tokenizer.token)
+      compile_first_token_for('term')
     else
       compile_first_token_for('term')
     end
@@ -349,19 +367,29 @@ class CompilationEngine
   end
 
   def compile_subroutine_call
+    fn_name = @tokenizer.token
+    arg_count = 0
+    if @symbol_table.kind_of(fn_name) != 'NONE'
+      fn_name = @symbol_table.type_of(fn_name)
+    end
+
     compile_first_token_for('subroutine_call')
 
     if token_is?('(')
+      # Refer to symbol tabel
       compile_token('(')
-      compile_expression_list
+      arg_count = compile_expression_list
       compile_token(')')
     else       
-    compile_token('.')
-    compile_subroutine_name
-    compile_token('(')
-    compile_expression_list
-    compile_token(')')
+      compile_token('.')
+      fn_name = fn_name + '.' + @tokenizer.token
+      compile_subroutine_name
+      compile_token('(')
+      arg_count = compile_expression_list
+      compile_token(')')
     end
+
+    @vm_writer.write_call(fn_name, arg_count)
   end
 
   private
@@ -427,10 +455,11 @@ class CompilationEngine
 
   def repeat_with_op?(opt = nil)
     if(repeat?(opt) && starting_token_for?('op')) 
+      operator = @tokenizer.token
       write_terminal_xml
       tokenizer.advance
 
-      yield
+      yield(operator)
     end
   end
 
@@ -545,5 +574,17 @@ class CompilationEngine
       type: @current_symbol_type
 
     })
+  end
+
+  def operator_map(op)
+    {
+      '+' => 'add', 
+      '-' => 'sub', 
+      '&' => 'and',
+      '|' => 'or', 
+      '<' => 'lt', 
+      '>' => 'gt', 
+      '=' => 'eq',
+    }[op]
   end
 end
