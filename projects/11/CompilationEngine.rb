@@ -11,9 +11,6 @@ class CompilationEngine
     @symbol_table = SymbolTable.new
     @current_class_name = ''
     @current_subroutine_name = ''
-    @current_symbol_type = ''
-    @current_symbol_kind = ''
-    @current_symbol_name = ''
 
     tokenizer.advance
 
@@ -31,6 +28,9 @@ class CompilationEngine
   def compile_class
     begin_terminal('class')
     compile_first_token_for('class')
+    
+    set_current_class_name
+    
     compile_class_name
     compile_token('{')    
     compile_class_var_dec('*')
@@ -45,9 +45,13 @@ class CompilationEngine
     
     begin_terminal('classVarDec')
 
+    kind = @tokenizer.token
+
     compile_first_token_for('class_var_dec')
-    compile_type
-    compile_var_name('+')
+    
+    type = compile_type
+
+    compile_var_name('+', { kind: kind, type: type })
     compile_token(';')
 
     end_terminal('classVarDec')
@@ -58,32 +62,36 @@ class CompilationEngine
   end
 
   def compile_type
-    set_current_type
-
+    type = @tokenizer.token
+    
     compile_first_token_for('type')
+
+    return type
   end
 
   def compile_class_name(opt = nil)
     return if (optional?(opt) && !starting_token_for?('class_name'))
 
-    set_current_class_name
-
     compile_first_token_for('class_name')
   end
 
-  def compile_var_name(opt = nil, skip_symbol_table = false)
+  def compile_var_name(opt = nil, type:, kind: )
     return if (optional?(opt) && !starting_token_for?('var_name'))
 
-    set_current_name
-    define_in_symbol_table unless skip_symbol_table
+    if (kind && type)
+      define_in_symbol_table({  
+        name: @tokenizer.name,
+        type: type,
+        kind: kind,
+      }) 
+    end
 
     compile_first_token_for('var_name')
 
-    repeat_with_comma?(opt) { compile_var_name('+') }
+    repeat_with_comma?(opt) { compile_var_name('+', { type: type, kind: kind }) }
   end
 
   def compile_subroutine_name()
-    set_current_subroutine_name
     compile_first_token_for('subroutine_name')
   end
 
@@ -100,6 +108,8 @@ class CompilationEngine
     end
     write_terminal_xml
     tokenizer.advance
+
+    set_current_subroutine_name
 
     compile_subroutine_name
 
@@ -138,8 +148,6 @@ class CompilationEngine
       return
     end
 
-    set_current_kind('arg')
-
     compile_type_var_name('*')
 
     end_terminal('parameterList')
@@ -148,8 +156,8 @@ class CompilationEngine
   def compile_type_var_name(opt = nil)
     return if (optional?(opt) && !starting_token_for?('type_var_name'))
 
-    compile_type
-    compile_var_name    
+    type = compile_type
+    compile_var_name(nil, { kind: 'arg' , type: type }) 
 
     repeat_with_comma?(opt) do 
       compile_type_var_name('+')
@@ -161,11 +169,9 @@ class CompilationEngine
 
     begin_terminal('varDec')
 
-    set_current_kind('var')
-
     compile_first_token_for('var_dec')
-    compile_type
-    compile_var_name('+')
+    type = compile_type
+    compile_var_name('+', { kind: 'var', type: type })
     compile_token(';')
 
     end_terminal('varDec')
@@ -216,7 +222,7 @@ class CompilationEngine
     begin_terminal('letStatement')
 
       compile_first_token_for('let')
-      compile_var_name(nil, true)
+      compile_var_name
 
       if (token_is?('['))
       compile_token('[')
@@ -543,7 +549,6 @@ class CompilationEngine
   end
 
   def set_current_class_name
-
     @current_class_name = @tokenizer.token
   end
 
@@ -551,29 +556,12 @@ class CompilationEngine
     @current_subroutine_name = @tokenizer.token
   end
 
-  def set_current_type
-    @current_symbol_type = @tokenizer.token
-  end
-
-  def set_current_name
-    @current_symbol_name = @tokenizer.token
-  end
-
-  def set_current_kind(dec_type)
-    @current_symbol_kind = dec_type.upcase
-  end
-
   def initialize_symbol_table_subroutine()
     @symbol_table.start_subroutine
   end
 
-  def define_in_symbol_table
-    @symbol_table.define({
-      name: @current_symbol_name,
-      kind: @current_symbol_kind,
-      type: @current_symbol_type
-
-    })
+  def define_in_symbol_table(data)
+    @symbol_table.define(data)
   end
 
   def operator_map(op)
