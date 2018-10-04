@@ -2,7 +2,7 @@ require_relative './JackTokenizer'
 require_relative './VMWriter'
 require_relative './SymbolTable'
 
-class CompilationEngine 
+class CompilationEngine
   def initialize(file_texts:, xml_file:, vm_file:)
     @tokenizer = JackTokenizer.new(file_texts)
     @xml_file = xml_file
@@ -30,11 +30,11 @@ class CompilationEngine
   def compile_class
     begin_terminal('class')
     compile_first_token_for('class')
-    
+
     set_current_class_name
-    
+
     compile_class_name
-    compile_token('{')    
+    compile_token('{')
     compile_class_var_dec('*')
     compile_subroutine_dec('*')
     compile_token('}')
@@ -44,13 +44,13 @@ class CompilationEngine
 
   def compile_class_var_dec(opt = nil)
     return if (optional?(opt) && !starting_token_for?('class_var_dec'))
-    
+
     begin_terminal('classVarDec')
 
     kind = declarator_to_kind_map(@tokenizer.token)
 
     compile_first_token_for('class_var_dec')
-    
+
     type = compile_type
 
     compile_var_name('+', { kind: kind, type: type })
@@ -58,14 +58,14 @@ class CompilationEngine
 
     end_terminal('classVarDec')
 
-    if (repeat?(opt) && starting_token_for?('class_var_dec')) 
+    if (repeat?(opt) && starting_token_for?('class_var_dec'))
         compile_class_var_dec(opt)
     end
   end
 
   def compile_type
     type = @tokenizer.token
-    
+
     compile_first_token_for('type')
 
     return type
@@ -81,11 +81,11 @@ class CompilationEngine
     return if (optional?(opt) && !starting_token_for?('var_name'))
 
     if (kind && type)
-      define_in_symbol_table({  
+      define_in_symbol_table({
         name: @tokenizer.token,
         type: type,
         kind: kind,
-      }) 
+      })
     end
 
     compile_first_token_for('var_name')
@@ -123,7 +123,7 @@ class CompilationEngine
     compile_first_token_for('subroutine_dec')
 
 
-    raise 'Expected (void || type)' if (!token_is?('void') && !starting_token_for?('type')) 
+    raise 'Expected (void || type)' if (!token_is?('void') && !starting_token_for?('type'))
     return_type = @tokenizer.token
 
     write_terminal_xml
@@ -154,12 +154,12 @@ class CompilationEngine
     compile_var_dec('*')
 
     @vm_writer.write_function(
-      "#{@current_class_name}.#{@current_subroutine[:name]}", 
+      "#{@current_class_name}.#{@current_subroutine[:name]}",
       @symbol_table.num_locals
     )
 
     # For constructor, we want to allocate memory for object in heap and set it to 'this'
-    if (@current_subroutine[:subroutine_type] == 'constructor') 
+    if (@current_subroutine[:subroutine_type] == 'constructor')
       this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
       this_index = @symbol_table.index_of('this')
       @vm_writer.write_push('constant', @symbol_table.var_count('FIELD'))
@@ -182,8 +182,8 @@ class CompilationEngine
 
   def compile_parameter_list
     begin_terminal('parameterList')
-    
-    if (!starting_token_for?('parameter_list')) 
+
+    if (!starting_token_for?('parameter_list'))
       end_terminal('parameterList')
       return
     end
@@ -197,9 +197,9 @@ class CompilationEngine
     return if (optional?(opt) && !starting_token_for?('type_var_name'))
 
     type = compile_type
-    compile_var_name(nil, { kind: 'ARG' , type: type }) 
+    compile_var_name(nil, { kind: 'ARG' , type: type })
 
-    repeat_with_comma?(opt) do 
+    repeat_with_comma?(opt) do
       compile_type_var_name('+')
     end
   end
@@ -216,7 +216,7 @@ class CompilationEngine
 
     end_terminal('varDec')
 
-    compile_var_dec(opt) if repeat?(opt) 
+    compile_var_dec(opt) if repeat?(opt)
   end
 
   def compile_statements
@@ -244,7 +244,7 @@ class CompilationEngine
     end
 
     compile_statement('*') if repeat?(opt)
-      
+
   end
 
   def compile_do
@@ -258,7 +258,7 @@ class CompilationEngine
     # element is thrown away. Note that void subroutine also returns
     # a constant 0 by construction.
     @vm_writer.write_pop('temp', 0)
-    
+
     end_terminal('doStatement')
   end
 
@@ -268,24 +268,38 @@ class CompilationEngine
     compile_first_token_for('let')
 
     var_name = @tokenizer.token
-    segment = kind_to_segment_map(@symbol_table.kind_of(var_name))
-    idx = @symbol_table.index_of(var_name)
+    var_segment = kind_to_segment_map(@symbol_table.kind_of(var_name))
+    var_idx = @symbol_table.index_of(var_name)
 
     compile_var_name
-
+    #  Case: Array
     if (token_is?('['))
-      # TODO: add logic for handling array
+
       compile_token('[')
       compile_expression
       compile_token(']')
+
+      @vm_writer.write_push(var_segment, var_idx)
+      @vm_writer.write_arithmetic('add')
+      @vm_writer.write_pop('temp', 1) # temporarily store (var_address + expression_output)
+
+      compile_token('=')
+      compile_expression
+      compile_token(';')
+
+      @vm_writer.write_pop('temp', 2)
+      @vm_writer.write_push('temp', 1)
+      @vm_writer.write_pop('pointer', 1)
+      @vm_writer.write_push('temp', 2)
+      @vm_writer.write_pop('that', 0) # *(var_address + expression_output) = right_hand_experssion
+    #  Case: Non-array
+    else
+      compile_token('=')
+      compile_expression
+      compile_token(';')
+
+      @vm_writer.write_pop(var_segment, var_idx)
     end
-
-    compile_token('=')
-    compile_expression
-    compile_token(';')
-
-    @vm_writer.write_pop(segment, idx)
-
     end_terminal('letStatement')
   end
 
@@ -297,7 +311,7 @@ class CompilationEngine
     @while_loop_count = @while_loop_count + 1
 
     @vm_writer.write_label(start_label)
-    
+
     compile_first_token_for('while')
     compile_token('(')
     compile_expression
@@ -319,16 +333,16 @@ class CompilationEngine
   def compile_return
     begin_terminal('returnStatement')
 
-    compile_first_token_for('return')    
+    compile_first_token_for('return')
     compile_expression('?')
     compile_token(';')
 
     if (@current_subroutine[:return_type] == 'void')
-      @vm_writer.write_push('constant', 0)  
+      @vm_writer.write_push('constant', 0)
     end
 
     @vm_writer.write_return
-    
+
     end_terminal('returnStatement')
   end
 
@@ -345,7 +359,7 @@ class CompilationEngine
     compile_token(')')
 
     @vm_writer.write_arithmetic('not')
-    @vm_writer.write_if(else_label)    
+    @vm_writer.write_if(else_label)
 
     compile_token('{')
     compile_statements
@@ -354,7 +368,7 @@ class CompilationEngine
     @vm_writer.write_go_to(end_label)
     @vm_writer.write_label(else_label)
 
-    if (token_is?('else')) 
+    if (token_is?('else'))
       compile_token('else')
       compile_token('{')
       compile_statements
@@ -375,7 +389,7 @@ class CompilationEngine
     compile_term
 
     repeat_with_op?('*') do |operator|
-      compile_term 
+      compile_term
 
       if operator == '*'
         @vm_writer.write_call('Math.multiply', 2)
@@ -386,7 +400,7 @@ class CompilationEngine
       end
     end
 
-    repeat_with_comma?(opt) { expression_count = compile_expression('+') } 
+    repeat_with_comma?(opt) { expression_count = compile_expression('+') }
 
     end_terminal('expression')
 
@@ -433,13 +447,20 @@ class CompilationEngine
           compile_token('[')
           compile_expression
           compile_token(']')
-          # TODO: Add logic for array
+
+          @vm_writer.write_push(
+            kind_to_segment_map(@symbol_table.kind_of(el_name)),
+            @symbol_table.index_of(el_name)
+          )
+          @vm_writer.write_arithmetic('add') # (array_address + array_idx)
+          @vm_writer.write_pop('pointer', 1) # set to base of that
+          @vm_writer.write_push('that', 0) # *(array_address + array_idx)
         # Case: varName
         else
           @vm_writer.write_push(
-            kind_to_segment_map(@symbol_table.kind_of(el_name)), 
+            kind_to_segment_map(@symbol_table.kind_of(el_name)),
             @symbol_table.index_of(el_name)
-          )            
+          )
         end
       # Case: subroutineCall
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -467,14 +488,24 @@ class CompilationEngine
     elsif token_is?('this')
       this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
       this_index = @symbol_table.index_of('this')
-      @vm_writer.write_push(this_segment, this_index)              
+      @vm_writer.write_push(this_segment, this_index)
 
       compile_first_token_for('term')
-    # TODO: Case: stringConstant
+    # Case: stringConstant
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    elsif token_type_is?(:STRING)
+      str = @tokenizer.token
+      @vm_writer.write_push('constant', str.size)
+      @vm_writer.write_call('String.new', 1)
+
+      str.each_char do |c|
+        @vm_writer.write_push('constant', c.ord)
+        @vm_writer.write_call('String.appendChar', 2)
+      end
+
+      compile_first_token_for('term')
     else
       compile_first_token_for('term')
-      # TODO: Add logic
     end
 
     end_terminal('term')
@@ -501,13 +532,13 @@ class CompilationEngine
       el_segment = kind_to_segment_map(@symbol_table.kind_of(el_name))
       el_index = @symbol_table.index_of(el_name)
       # push object base location as first argument
-      @vm_writer.write_push(el_segment, el_index)      
+      @vm_writer.write_push(el_segment, el_index)
 
       compile_first_token_for('subroutine_call')
       compile_token('.')
 
       el_name = @symbol_table.type_of(el_name) + '.' + @tokenizer.token
-      
+
       compile_subroutine_name
       compile_token('(')
 
@@ -520,30 +551,30 @@ class CompilationEngine
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if token_is?('(')
         el_name = @current_class_name + '.' + el_name
-        
+
         this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
         this_index = @symbol_table.index_of('this')
-        @vm_writer.write_push(this_segment, this_index)              
+        @vm_writer.write_push(this_segment, this_index)
 
         compile_token('(')
-      
+
         arg_count = compile_expression_list + 1
-        
+
         compile_token(')')
       # Case: class function call
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      else       
+      else
         compile_token('.')
 
         el_name = el_name + '.' + @tokenizer.token
-        
+
         compile_subroutine_name
         compile_token('(')
-        
+
         arg_count = compile_expression_list
-        
+
         compile_token(')')
-      end      
+      end
     end
 
     @vm_writer.write_call(el_name, arg_count)
@@ -553,19 +584,19 @@ class CompilationEngine
   def write_terminal_xml
     if tokenizer.token == '<'
       xml_file.puts(
-        "<#{tokenizer.token_type}> &lt </#{tokenizer.token_type}>" 
+        "<#{tokenizer.token_type}> &lt </#{tokenizer.token_type}>"
       )
     elsif tokenizer.token == '>'
       xml_file.puts(
-        "<#{tokenizer.token_type}> &gt </#{tokenizer.token_type}>" 
+        "<#{tokenizer.token_type}> &gt </#{tokenizer.token_type}>"
       )
     elsif tokenizer.token == '&'
       xml_file.puts(
-        "<#{tokenizer.token_type}> &amp </#{tokenizer.token_type}>" 
+        "<#{tokenizer.token_type}> &amp </#{tokenizer.token_type}>"
       )
     else
       xml_file.puts(
-        "<#{tokenizer.token_type}> #{tokenizer.token} </#{tokenizer.token_type}>" 
+        "<#{tokenizer.token_type}> #{tokenizer.token} </#{tokenizer.token_type}>"
       )
     end
   end
@@ -582,14 +613,14 @@ class CompilationEngine
     if (!token_is?(token))
       raise "Expected '#{token}' to be the next token"
     end
-    
+
     write_terminal_xml
-    tokenizer.advance    
+    tokenizer.advance
   end
 
   def compile_first_token_for(element)
     if !starting_token_for?(element)
-      raise "Unexpected first token for #{element} element"      
+      raise "Unexpected first token for #{element} element"
     end
 
     write_terminal_xml
@@ -602,7 +633,7 @@ class CompilationEngine
   end
 
   def repeat_with_comma?(opt = nil)
-    if(repeat?(opt) && token_is?(',')) 
+    if(repeat?(opt) && token_is?(','))
       write_terminal_xml
       tokenizer.advance
 
@@ -611,7 +642,7 @@ class CompilationEngine
   end
 
   def repeat_with_op?(opt = nil)
-    if(repeat?(opt) && starting_token_for?('op')) 
+    if(repeat?(opt) && starting_token_for?('op'))
       operator = @tokenizer.token
       write_terminal_xml
       tokenizer.advance
@@ -643,7 +674,7 @@ class CompilationEngine
   def starting_token_for?(element)
     case (element)
     when 'class'
-      token_is?('class')   
+      token_is?('class')
     when 'class_var_dec'
       token_is?('field', 'static')
     when 'type'
@@ -681,7 +712,7 @@ class CompilationEngine
       starting_token_for?('var_name') ||
       starting_token_for?('subroutine_call') ||
       token_is?('(') ||
-      starting_token_for?('unary_op') 
+      starting_token_for?('unary_op')
     when 'op'
       token_is?('+', '-', '*', '/', '&', '|', '<', '>', '=')
     when 'unary_op'
@@ -693,7 +724,7 @@ class CompilationEngine
     when 'expression_list'
       starting_token_for?('expression')
     when 'subroutine_call'
-      starting_token_for?('subroutine_name') || 
+      starting_token_for?('subroutine_name') ||
       starting_token_for?('class_name') ||
       starting_token_for?('var_name')
     end
@@ -704,10 +735,10 @@ class CompilationEngine
   end
 
   def set_current_subroutine(name:, return_type:, subroutine_type:)
-    @current_subroutine = { 
-      name: name, 
-      return_type: return_type, 
-      subroutine_type: subroutine_type 
+    @current_subroutine = {
+      name: name,
+      return_type: return_type,
+      subroutine_type: subroutine_type
     }
   end
 
@@ -721,19 +752,19 @@ class CompilationEngine
 
   def op_map(op)
     {
-      '+' => 'add', 
-      '-' => 'sub', 
+      '+' => 'add',
+      '-' => 'sub',
       '&' => 'and',
-      '|' => 'or', 
-      '<' => 'lt', 
-      '>' => 'gt', 
+      '|' => 'or',
+      '<' => 'lt',
+      '>' => 'gt',
       '=' => 'eq',
     }[op]
   end
 
   def unary_op_map(op)
     {
-      '-' => 'neg', 
+      '-' => 'neg',
       '~' => 'not',
     }[op]
   end
