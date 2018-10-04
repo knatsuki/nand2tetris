@@ -1,14 +1,14 @@
-require_relative './JackTokenizer'
-require_relative './VMWriter'
-require_relative './SymbolTable'
+require_relative './jack_tokenizer'
+require_relative './jack_vm_writer'
+require_relative './jack_symbol_table'
 
-class CompilationEngine
+class JackCompilationEngine
   def initialize(file_texts:, xml_file:, vm_file:)
     @tokenizer = JackTokenizer.new(file_texts)
     @xml_file = xml_file
-    @vm_writer = VMWriter.new(vm_file)
+    @vm_writer = JackVMWriter.new(vm_file)
     # SymbolTable-related fields
-    @symbol_table = SymbolTable.new
+    @symbol_table = JackSymbolTable.new
     @current_class_name = ''
     @current_subroutine = { name: '', type: '' }
     @while_loop_count = 0
@@ -47,7 +47,7 @@ class CompilationEngine
 
     begin_terminal('classVarDec')
 
-    kind = declarator_to_kind_map(@tokenizer.token)
+    kind = @tokenizer.token
 
     compile_first_token_for('class_var_dec')
 
@@ -108,20 +108,19 @@ class CompilationEngine
     if (subroutine_type == 'method' )
       @symbol_table.define({
         name: 'this',
-        kind: 'ARG',
+        kind: 'argument',
         type: @current_class_name
       })
     # If constructor, local variable is allocated for 'this'
     elsif (subroutine_type == 'constructor')
       @symbol_table.define({
         name: 'this',
-        kind: 'VAR',
+        kind: 'var',
         type: @current_class_name
       })
     end
 
     compile_first_token_for('subroutine_dec')
-
 
     raise 'Expected (void || type)' if (!token_is?('void') && !starting_token_for?('type'))
     return_type = @tokenizer.token
@@ -160,15 +159,15 @@ class CompilationEngine
 
     # For constructor, we want to allocate memory for object in heap and set it to 'this'
     if (@current_subroutine[:subroutine_type] == 'constructor')
-      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_segment = @symbol_table.segment_of('this')
       this_index = @symbol_table.index_of('this')
-      @vm_writer.write_push('constant', @symbol_table.var_count('FIELD'))
+      @vm_writer.write_push('constant', @symbol_table.var_count('field'))
       @vm_writer.write_call('Memory.alloc', 1)
       @vm_writer.write_pop(this_segment, this_index)
       @vm_writer.write_push(this_segment, this_index)
       @vm_writer.write_pop('pointer', 0)
     elsif (@current_subroutine[:subroutine_type] == 'method')
-      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_segment = @symbol_table.segment_of('this')
       this_index = @symbol_table.index_of('this')
       @vm_writer.write_push(this_segment, this_index)
       @vm_writer.write_pop('pointer', 0)
@@ -197,7 +196,7 @@ class CompilationEngine
     return if (optional?(opt) && !starting_token_for?('type_var_name'))
 
     type = compile_type
-    compile_var_name(nil, { kind: 'ARG' , type: type })
+    compile_var_name(nil, { kind: 'argument' , type: type })
 
     repeat_with_comma?(opt) do
       compile_type_var_name('+')
@@ -211,7 +210,7 @@ class CompilationEngine
 
     compile_first_token_for('var_dec')
     type = compile_type
-    compile_var_name('+', { kind: 'VAR', type: type })
+    compile_var_name('+', { kind: 'var', type: type })
     compile_token(';')
 
     end_terminal('varDec')
@@ -268,7 +267,7 @@ class CompilationEngine
     compile_first_token_for('let')
 
     var_name = @tokenizer.token
-    var_segment = kind_to_segment_map(@symbol_table.kind_of(var_name))
+    var_segment = @symbol_table.segment_of(var_name)
     var_idx = @symbol_table.index_of(var_name)
 
     compile_var_name
@@ -280,7 +279,7 @@ class CompilationEngine
       compile_token(']')
 
       @vm_writer.write_push(var_segment, var_idx)
-      @vm_writer.write_arithmetic('add')
+      @vm_writer.write_arithmetic('+')
       @vm_writer.write_pop('temp', 1) # temporarily store (var_address + expression_output)
 
       compile_token('=')
@@ -317,7 +316,7 @@ class CompilationEngine
     compile_expression
     compile_token(')')
 
-    @vm_writer.write_arithmetic('not')
+    @vm_writer.write_arithmetic('~', true)
     @vm_writer.write_if(end_label)
 
     compile_token('{')
@@ -358,7 +357,7 @@ class CompilationEngine
     compile_expression
     compile_token(')')
 
-    @vm_writer.write_arithmetic('not')
+    @vm_writer.write_arithmetic('~', true)
     @vm_writer.write_if(else_label)
 
     compile_token('{')
@@ -396,7 +395,7 @@ class CompilationEngine
       elsif operator == '/'
         @vm_writer.write_call('Math.divide', 2)
       else
-        @vm_writer.write_arithmetic(op_map(operator))
+        @vm_writer.write_arithmetic(operator)
       end
     end
 
@@ -428,7 +427,7 @@ class CompilationEngine
       compile_unary_op
       compile_term
 
-      @vm_writer.write_arithmetic(unary_op_map(op))
+      @vm_writer.write_arithmetic(op, true)
     # Case: (expression)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_is?('(')
@@ -449,16 +448,16 @@ class CompilationEngine
           compile_token(']')
 
           @vm_writer.write_push(
-            kind_to_segment_map(@symbol_table.kind_of(el_name)),
+            @symbol_table.segment_of(el_name),
             @symbol_table.index_of(el_name)
           )
-          @vm_writer.write_arithmetic('add') # (array_address + array_idx)
+          @vm_writer.write_arithmetic('+') # (array_address + array_idx)
           @vm_writer.write_pop('pointer', 1) # set to base of that
           @vm_writer.write_push('that', 0) # *(array_address + array_idx)
         # Case: varName
         else
           @vm_writer.write_push(
-            kind_to_segment_map(@symbol_table.kind_of(el_name)),
+            @symbol_table.segment_of(el_name),
             @symbol_table.index_of(el_name)
           )
         end
@@ -481,12 +480,12 @@ class CompilationEngine
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_is?('true')
       @vm_writer.write_push('constant', 0)
-      @vm_writer.write_arithmetic('not')
+      @vm_writer.write_arithmetic('~', true)
       compile_first_token_for('term')
     # Case: this
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_is?('this')
-      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_segment = @symbol_table.segment_of('this')
       this_index = @symbol_table.index_of('this')
       @vm_writer.write_push(this_segment, this_index)
 
@@ -529,7 +528,7 @@ class CompilationEngine
     # Case: variable inside symbol table
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if @symbol_table.kind_of(el_name) != 'NONE'
-      el_segment = kind_to_segment_map(@symbol_table.kind_of(el_name))
+      el_segment = @symbol_table.segment_of(el_name)
       el_index = @symbol_table.index_of(el_name)
       # push object base location as first argument
       @vm_writer.write_push(el_segment, el_index)
@@ -552,7 +551,7 @@ class CompilationEngine
       if token_is?('(')
         el_name = @current_class_name + '.' + el_name
 
-        this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+        this_segment = @symbol_table.segment_of('this')
         this_index = @symbol_table.index_of('this')
         @vm_writer.write_push(this_segment, this_index)
 
@@ -748,41 +747,5 @@ class CompilationEngine
 
   def define_in_symbol_table(data)
     @symbol_table.define(data)
-  end
-
-  def op_map(op)
-    {
-      '+' => 'add',
-      '-' => 'sub',
-      '&' => 'and',
-      '|' => 'or',
-      '<' => 'lt',
-      '>' => 'gt',
-      '=' => 'eq',
-    }[op]
-  end
-
-  def unary_op_map(op)
-    {
-      '-' => 'neg',
-      '~' => 'not',
-    }[op]
-  end
-
-  def kind_to_segment_map(kind)
-    {
-     'STATIC' => 'static',
-      'FIELD' => 'this',
-      'ARG' => 'argument',
-      'VAR' => 'local',
-    }[kind]
-  end
-
-  def declarator_to_kind_map(d)
-    {
-      'static' => 'STATIC',
-      'field' => 'FIELD',
-      'var' => 'VAR',
-    }[d]
   end
 end

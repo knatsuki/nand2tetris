@@ -1,4 +1,4 @@
-class CodeWriter
+class VMCodeWriter
   def initialize(file)
     @file = file
     @counts = {
@@ -28,11 +28,11 @@ class CodeWriter
   def write_label(label_name)
     @file.puts(
       label_template(function_label(label_name)),
-    )          
+    )
   end
 
   def write_goto(label_name)
-    @file.puts(goto_template(function_label(label_name)))          
+    @file.puts(goto_template(function_label(label_name)))
   end
 
 
@@ -44,7 +44,7 @@ class CodeWriter
       'D=M',
       "@#{function_label(label_name)}",
       'D;JNE',
-    )          
+    )
   end
 
   def write_function(fn_name, num_locals)
@@ -67,7 +67,7 @@ class CodeWriter
       push_symbol_value_template('THIS'),
       push_symbol_value_template('THAT'),
       set_symbol_template_3('ARG', 'SP', 5+num_args, false),
-      set_symbol_template_1('LCL','SP'), 
+      set_symbol_template_1('LCL','SP'),
       goto_template(fn_name),
       label_template(return_address_label_name),
     )
@@ -78,8 +78,8 @@ class CodeWriter
   def write_return
     @file.puts(
       '// Return',
-      set_symbol_template_1('R14','LCL'), # LCL temp 
-      set_symbol_template_2('R15','R14', 5, false), # return address temp 
+      set_symbol_template_1('R14','LCL'), # LCL temp
+      set_symbol_template_2('R15','R14', 5, false), # return address temp
       pop_template_1('ARG', 0), # *(ARG) = pop()
       set_symbol_template_3('SP', 'ARG', 1, true),
       set_symbol_template_2('THAT','R14', 1, false),
@@ -89,7 +89,7 @@ class CodeWriter
       [
         '@R15',
         'A=M',
-        '0;JMP',      
+        '0;JMP',
       ]
     )
   end
@@ -129,7 +129,7 @@ class CodeWriter
         'D=M',
         "@#{idx}",
         'M=D',
-      )      
+      )
     elsif segment == 'static'
       @file.puts(
         '// Pop Static',
@@ -139,7 +139,7 @@ class CodeWriter
         'D=M',
         "@#{file_name}.#{idx}",
         'M=D',
-      )      
+      )
     elsif segment == 'local'
       @file.puts('// Pop Local', pop_template_1('LCL', idx))
     elsif segment == 'argument'
@@ -147,20 +147,20 @@ class CodeWriter
     elsif segment == 'this'
       @file.puts('// Pop This', pop_template_1('THIS', idx))
     elsif segment == 'that'
-      @file.puts('// Pop That', pop_template_1('THAT', idx))      
+      @file.puts('// Pop That', pop_template_1('THAT', idx))
     elsif segment == 'pointer'
-      @file.puts('// Pop Pointer', pop_template_2('R3', idx))      
+      @file.puts('// Pop Pointer', pop_template_2('R3', idx))
     elsif segment == 'temp'
-      @file.puts('// Pop Temp', pop_template_2('R5', idx))      
+      @file.puts('// Pop Temp', pop_template_2('R5', idx))
     end
   end
 
 
   def write_push(segment, idx)
     if segment == 'constant'
-      @file.puts('// Push Constant', push_constant_template(idx))      
+      @file.puts('// Push Constant', push_constant_template(idx))
     elsif segment == 'static'
-      @file.puts('// Push Static', push_static_template(idx))      
+      @file.puts('// Push Static', push_static_template(idx))
     elsif segment == 'local'
       @file.puts('// Push Local', push_template_1('LCL', idx))
     elsif segment == 'argument'
@@ -168,11 +168,11 @@ class CodeWriter
     elsif segment == 'this'
       @file.puts('// Push This', push_template_1('THIS', idx))
     elsif segment == 'that'
-      @file.puts('// Push That', push_template_1('THAT', idx))      
+      @file.puts('// Push That', push_template_1('THAT', idx))
     elsif segment == 'pointer'
-      @file.puts('// Push Pointer', push_template_2('R3', idx))      
+      @file.puts('// Push Pointer', push_template_2('R3', idx))
     elsif segment == 'temp'
-      @file.puts('// Push Temp', push_template_2('R5', idx))      
+      @file.puts('// Push Temp', push_template_2('R5', idx))
     end
   end
 
@@ -199,7 +199,7 @@ class CodeWriter
   def return_address_label_name
     "#{function_name}$RETURN_ADDRESS_#{@counts[:call]}"
   end
-  
+
   def write_add
     @file.puts(
       '// Add',
@@ -353,7 +353,7 @@ class CodeWriter
   def goto_template(label)
     [
       "@#{label}",
-      "0;JMP",      
+      "0;JMP",
     ]
   end
 
@@ -368,7 +368,7 @@ class CodeWriter
       'A=M',
       'M=D',
       '@SP',
-      'M=M+1',      
+      'M=M+1',
     ]
   end
 
@@ -383,7 +383,7 @@ class CodeWriter
       'A=M',
       'M=D',
       '@SP',
-      'M=M+1',      
+      'M=M+1',
     ]
   end
 
@@ -395,7 +395,7 @@ class CodeWriter
       'A=M',
       'M=D',
       '@SP',
-      'M=M+1',      
+      'M=M+1',
     ]
   end
 
@@ -407,7 +407,7 @@ class CodeWriter
       'A=M',
       'M=D',
       '@SP',
-      'M=M+1',      
+      'M=M+1',
     ]
   end
 
@@ -447,7 +447,7 @@ class CodeWriter
     ]
   end
 
-  def push_symbol_address_template(symbol_name) 
+  def push_symbol_address_template(symbol_name)
     [
       "@#{symbol_name}",
       'D=A',
@@ -459,7 +459,7 @@ class CodeWriter
     ]
   end
 
-  def push_symbol_value_template(symbol_name) 
+  def push_symbol_value_template(symbol_name)
     [
       "@#{symbol_name}",
       'D=M',
@@ -477,7 +477,7 @@ class CodeWriter
     [
       "@#{arg}",
       "D=#{arg.is_a?(Integer) ? 'A' : 'M'}",
-      "@#{symbol}", 
+      "@#{symbol}",
       'M=D',
     ]
   end
@@ -489,9 +489,9 @@ class CodeWriter
       'D=A',
       "@#{arg}",
       "D=M#{is_add ? '+' : '-'}D",
-      'A=D', 
+      'A=D',
       'D=M',
-      "@#{symbol}", 
+      "@#{symbol}",
       'M=D',
     ]
   end
@@ -504,7 +504,7 @@ class CodeWriter
       'D=A',
       "@#{arg}",
       "D=M#{is_add ? '+' : '-'}D",
-      "@#{symbol}", 
+      "@#{symbol}",
       'M=D',
     ]
   end
@@ -517,8 +517,8 @@ class CodeWriter
   #   body = body[/\*\((.+)\)/, 1] if set_to_address_value
 
   #   # parse body
-  #   # ex. SP - 5 
-  #   # => 
+  #   # ex. SP - 5
+  #   # =>
   #   # body_arg_1 = 'SP'
   #   # body_has_arithmetic = true
   #   # is_add = false
@@ -538,7 +538,7 @@ class CodeWriter
   #       'D=A',
   #       "@#{body_arg_1}",
   #       "D=#{body_arg_1_is_int ? 'A' : 'M'}#{is_add ? '+' : '-'}D",
-  #     ]      
+  #     ]
   #   else
   #     template += [
   #       "@#{body_arg_1}",

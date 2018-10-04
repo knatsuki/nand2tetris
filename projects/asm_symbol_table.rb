@@ -1,4 +1,4 @@
-class SymbolTable
+class ASMSymbolTable
   DEFAULT_TABLE = {
     'SP'=> '000000000000000',
     'LCL'=> '000000000000001',
@@ -40,7 +40,7 @@ class SymbolTable
 
   def get_address(sym)
     if @table.key?(sym)
-      @table[sym] 
+      @table[sym]
     elsif sym_is_num?(sym)
       generate_address_from_num(sym.to_i)
     end
@@ -56,7 +56,7 @@ class SymbolTable
   end
 
   def add_label(sym, line_number)
-    add_entry(sym, generate_address_from_num(line_number))    
+    add_entry(sym, generate_address_from_num(line_number))
   end
 
   def generate_address_from_num(num)

@@ -1,7 +1,7 @@
-class Parser
+class ASMParser
   def initialize(file)
     @file = file
-    @current_line = @file.gets 
+    @current_line = @file.gets
     @line_number = 0
   end
 
@@ -22,7 +22,7 @@ class Parser
 
   def advance
     # iterates current line to the next one
-    @current_line = @file.gets 
+    @current_line = @file.gets
 
     # @line_number is not iterated for comments and labels
     if has_more_commands && ['A_COMMAND', 'C_COMMAND'].include?(command_type)
@@ -32,7 +32,7 @@ class Parser
 
   def rewind
     @file.rewind
-    @current_line = @file.gets 
+    @current_line = @file.gets
     @line_number = 0
   end
 

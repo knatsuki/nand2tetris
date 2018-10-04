@@ -1,4 +1,4 @@
-module Code
+module ASMCode
   DEST = {
     nil => '000',
     'M' => '001',

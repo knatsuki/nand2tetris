@@ -1,4 +1,4 @@
-class VMWriter
+class JackVMWriter
   def initialize(vm_file)
     @vm_file = vm_file
   end
@@ -17,10 +17,12 @@ class VMWriter
     @vm_file.puts("pop #{segment} #{index}")
   end
 
-  def write_arithmetic(command)
-    # write arithmetic command
-    unless valid_arithmetic?(command)
-      raise 'Invalid arithmentic command'
+  def write_arithmetic(operator, is_unary = false)
+    command = ''
+    if is_unary
+      command = unary_op_map(operator)
+    else
+      command = op_map(operator)
     end
 
     @vm_file.puts(command)
@@ -57,7 +59,7 @@ class VMWriter
     @vm_file.puts('return')
   end
 
-  private 
+  private
   def valid_segment?(segment)
     [
       'constant',
@@ -68,7 +70,7 @@ class VMWriter
       'that',
       'pointer',
       'temp',
-    ].include?(segment) 
+    ].include?(segment)
   end
 
   def raise_invalid_segment
@@ -86,6 +88,25 @@ class VMWriter
       'and',
       'or',
       'not',
-    ].include?(command) 
+    ].include?(command)
+  end
+
+  def op_map(op)
+    {
+      '+' => 'add',
+      '-' => 'sub',
+      '&' => 'and',
+      '|' => 'or',
+      '<' => 'lt',
+      '>' => 'gt',
+      '=' => 'eq',
+    }[op]
+  end
+
+  def unary_op_map(op)
+    {
+      '-' => 'neg',
+      '~' => 'not',
+    }[op]
   end
 end
