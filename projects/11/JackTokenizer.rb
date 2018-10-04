@@ -62,18 +62,18 @@ class JackTokenizer
   def advance
     @token = ''
 
-    if !has_more_token? 
+    if !has_more_token?
       @token_type = nil
       return
     end
-    
+
     # mine until first non-whitespace character is found
     mining = true
     while (mining)
       rnc = retrieve_next_character
 
       if (!!rnc[WHITESPACE_REGEX]) # skip any whitespace character
-        next 
+        next
       else
         token << rnc
         mining = false
@@ -84,7 +84,7 @@ class JackTokenizer
       @token_type = TERMINAL[:SYMBOL]
     elsif token[DIGIT_REGEX]
       if token[/0/]
-        inc = inspect_next_character        
+        inc = inspect_next_character
         if (inc[WHITESPACE_REGEX] || inc[SYMBOL_REGEX])
           @token_type = TERMINAL[:INTEGER]
           mining = false
@@ -103,7 +103,7 @@ class JackTokenizer
           else
             raise 'invalid numeric constant'
           end
-        end        
+        end
       end
     elsif token[QUOTE_REGEX]
       mining = true
@@ -129,7 +129,7 @@ class JackTokenizer
           mining = false
         else
           rnc = retrieve_next_character
-          token << rnc          
+          token << rnc
         end
       end
     end
@@ -139,13 +139,13 @@ class JackTokenizer
     @token_type
   end
 
+  def inspect_next_character
+    @remaining_characters[0]
+  end
+
   private
 
   def retrieve_next_character
     @remaining_characters.slice!(0)
-  end
-
-  def inspect_next_character
-    @remaining_characters[0]
   end
 end

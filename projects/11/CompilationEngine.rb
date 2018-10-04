@@ -439,7 +439,7 @@ class CompilationEngine
       el_name = @tokenizer.token
       # Case: varName || varName[expression]
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      if (@symbol_table.kind_of(el_name) != 'NONE')
+      if (@symbol_table.kind_of(el_name) != 'NONE' && @tokenizer.inspect_next_character != '.')
         write_terminal_xml
         tokenizer.advance
         # Case: varName[expression]
