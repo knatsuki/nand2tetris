@@ -10,7 +10,9 @@ class CompilationEngine
     # SymbolTable-related fields
     @symbol_table = SymbolTable.new
     @current_class_name = ''
-    @current_subroutine_name = ''
+    @current_subroutine = { name: '', type: '' }
+    @while_loop_count = 0
+    @if_loop_count = 0
 
     tokenizer.advance
 
@@ -45,7 +47,7 @@ class CompilationEngine
     
     begin_terminal('classVarDec')
 
-    kind = @tokenizer.token
+    kind = declarator_to_kind_map(@tokenizer.token)
 
     compile_first_token_for('class_var_dec')
     
@@ -75,12 +77,12 @@ class CompilationEngine
     compile_first_token_for('class_name')
   end
 
-  def compile_var_name(opt = nil, type:, kind: )
+  def compile_var_name(opt = nil, type: nil, kind: nil)
     return if (optional?(opt) && !starting_token_for?('var_name'))
 
     if (kind && type)
       define_in_symbol_table({  
-        name: @tokenizer.name,
+        name: @tokenizer.token,
         type: type,
         kind: kind,
       }) 
@@ -99,17 +101,32 @@ class CompilationEngine
     return if (optional?(opt) && !starting_token_for?('subroutine_dec'))
 
     begin_terminal('subroutineDec')
+
     initialize_symbol_table_subroutine
+    subroutine_type = @tokenizer.token
+    # If method/constructor, first argument is the instance object
+    if (subroutine_type == 'method' || subroutine_type == 'constructor')
+      @symbol_table.define({
+        name: 'this',
+        kind: 'ARG',
+        type: @current_class_name
+      })
+    end
 
     compile_first_token_for('subroutine_dec')
 
-    if (!token_is?('void') && !starting_token_for?('type')) 
-      raise 'Expected (void || type)'
-    end
+
+    raise 'Expected (void || type)' if (!token_is?('void') && !starting_token_for?('type')) 
+    return_type = @tokenizer.token
+
     write_terminal_xml
     tokenizer.advance
 
-    set_current_subroutine_name
+    set_current_subroutine({
+      name: @tokenizer.token,
+      return_type: return_type,
+      subroutine_type: subroutine_type,
+    })
 
     compile_subroutine_name
 
@@ -130,9 +147,16 @@ class CompilationEngine
     compile_var_dec('*')
 
     @vm_writer.write_function(
-      "#{@current_class_name}.#{@current_subroutine_name}", 
+      "#{@current_class_name}.#{@current_subroutine[:name]}", 
       @symbol_table.num_locals
     )
+
+    # For constructor, we want to allocate memory for object in heap and set it to 'this'
+    # if (@current_subroutine[:subroutine_type] == 'constructor') 
+    #   @vm_writer.write_push('constant', @symbol_table.var_count('FIELD'))
+    #   @vm_writer.write_call('Memory.alloc', 1)
+    #   @vm_writer.write_pop('argument', 0)
+    # end
 
     compile_statements
     compile_token('}')
@@ -157,7 +181,7 @@ class CompilationEngine
     return if (optional?(opt) && !starting_token_for?('type_var_name'))
 
     type = compile_type
-    compile_var_name(nil, { kind: 'arg' , type: type }) 
+    compile_var_name(nil, { kind: 'ARG' , type: type }) 
 
     repeat_with_comma?(opt) do 
       compile_type_var_name('+')
@@ -171,7 +195,7 @@ class CompilationEngine
 
     compile_first_token_for('var_dec')
     type = compile_type
-    compile_var_name('+', { kind: 'var', type: type })
+    compile_var_name('+', { kind: 'VAR', type: type })
     compile_token(';')
 
     end_terminal('varDec')
@@ -221,10 +245,16 @@ class CompilationEngine
   def compile_let
     begin_terminal('letStatement')
 
-      compile_first_token_for('let')
-      compile_var_name
+    compile_first_token_for('let')
 
-      if (token_is?('['))
+    var_name = @tokenizer.token
+    segment = kind_to_segment_map(@symbol_table.kind_of(var_name))
+    idx = @symbol_table.index_of(var_name)
+
+    compile_var_name
+
+    if (token_is?('['))
+      # TODO: add logic for handling array
       compile_token('[')
       compile_expression
       compile_token(']')
@@ -234,19 +264,34 @@ class CompilationEngine
     compile_expression
     compile_token(';')
 
+    @vm_writer.write_pop(segment, idx)
+
     end_terminal('letStatement')
   end
 
   def compile_while
     begin_terminal('whileStatement')
 
+    start_label = @current_class_name + '_while_start_' + @while_loop_count.to_s
+    end_label = @current_class_name + '_while_end_' + @while_loop_count.to_s
+    @while_loop_count = @while_loop_count + 1
+
+    @vm_writer.write_label(start_label)
+    
     compile_first_token_for('while')
     compile_token('(')
     compile_expression
     compile_token(')')
+
+    @vm_writer.write_arithmetic('not')
+    @vm_writer.write_if(end_label)
+
     compile_token('{')
     compile_statements
     compile_token('}')
+
+    @vm_writer.write_go_to(start_label)
+    @vm_writer.write_label(end_label)
 
     end_terminal('whileStatement')
   end
@@ -258,6 +303,10 @@ class CompilationEngine
     compile_expression('?')
     compile_token(';')
 
+    if (@current_subroutine[:return_type] == 'void')
+      @vm_writer.write_push('constant', 0)  
+    end
+
     @vm_writer.write_return
     
     end_terminal('returnStatement')
@@ -266,13 +315,24 @@ class CompilationEngine
   def compile_if
     begin_terminal('ifStatement')
 
+    else_label = @current_class_name + '_if_else_' + @if_loop_count.to_s
+    end_label = @current_class_name + '_if_end_' + @if_loop_count.to_s
+    @if_loop_count = @if_loop_count + 1
+
     compile_first_token_for('if')
     compile_token('(')
     compile_expression
     compile_token(')')
+
+    @vm_writer.write_arithmetic('not')
+    @vm_writer.write_if(else_label)    
+
     compile_token('{')
     compile_statements
     compile_token('}')
+
+    @vm_writer.write_go_to(end_label)
+    @vm_writer.write_label(else_label)
 
     if (token_is?('else')) 
       compile_token('else')
@@ -280,6 +340,8 @@ class CompilationEngine
       compile_statements
       compile_token('}')
     end
+
+    @vm_writer.write_label(end_label)
 
     end_terminal('ifStatement')
   end
@@ -297,8 +359,10 @@ class CompilationEngine
 
       if operator == '*'
         @vm_writer.write_call('Math.multiply', 2)
+      elsif operator == '/'
+        @vm_writer.write_call('Math.divide', 2)
       else
-        @vm_writer.write_arithmetic(operator_map(operator))
+        @vm_writer.write_arithmetic(op_map(operator))
       end
     end
 
@@ -322,39 +386,72 @@ class CompilationEngine
   def compile_term
     begin_terminal('term')
 
+    # Case: unaryOp term
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if starting_token_for?('unary_op')
+      op = @tokenizer.token
+
       compile_unary_op
       compile_term
+
+      @vm_writer.write_arithmetic(unary_op_map(op))
+    # Case: (expression)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_is?('(')
       compile_token('(')
       compile_expression
       compile_token(')')
     elsif token_type_is?(:IDENTIFIER)
-      write_terminal_xml
-      tokenizer.advance
-
-      if token_is?('[')
-        compile_token('[')
-        compile_expression
-        compile_token(']')
+      el_name = @tokenizer.token
+      # Case: varName || varName[expression]
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if (@symbol_table.kind_of(el_name) != 'NONE')
+        write_terminal_xml
+        tokenizer.advance
+        # Case: varName[expression]
+        if token_is?('[')
+          compile_token('[')
+          compile_expression
+          compile_token(']')
+          # TODO: Add logic for array
+        # Case: varName
+        else
+          @vm_writer.write_push(
+            kind_to_segment_map(@symbol_table.kind_of(el_name)), 
+            @symbol_table.index_of(el_name)
+          )            
+        end
+      # Case: subroutineCall
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      else
+        compile_subroutine_call
       end
-
-      if token_is?('.')
-        compile_token('.')
-        compile_subroutine_name
-        compile_token('(')
-        compile_expression_list
-        compile_token(')')
-      elsif token_is?('(')
-        compile_token('(')
-        compile_expression_list
-        compile_token(')')        
-      end
+    # Case: integerConstant
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_type_is?(:INTEGER)
       @vm_writer.write_push('constant', @tokenizer.token)
       compile_first_token_for('term')
+    # Case: false
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    elsif token_is?('false', 'null')
+      @vm_writer.write_push('constant', 0)
+      compile_first_token_for('term')
+    # Case: true
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    elsif token_is?('true')
+      @vm_writer.write_push('constant', 0)
+      @vm_writer.write_arithmetic('not')
+      compile_first_token_for('term')
+    # Case: this
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    elsif token_is?('this')
+      @vm_writer.write_push('argument', 0)
+      compile_first_token_for('term')
+    # TODO: Case: stringConstant
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     else
       compile_first_token_for('term')
+      # TODO: Add logic
     end
 
     end_terminal('term')
@@ -373,29 +470,57 @@ class CompilationEngine
   end
 
   def compile_subroutine_call
-    fn_name = @tokenizer.token
+    el_name = @tokenizer.token
     arg_count = 0
-    if @symbol_table.kind_of(fn_name) != 'NONE'
-      fn_name = @symbol_table.type_of(fn_name)
-    end
+    # Case: variable inside symbol table
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if @symbol_table.kind_of(el_name) != 'NONE'
+      el_segment = kind_to_segment_map(@symbol_table.kind_of(el_name))
+      el_index = @symbol_table.index_of(el_name)
+      # push object base location as first argument
+      @vm_writer.write_push(el_segment, el_index)      
 
-    compile_first_token_for('subroutine_call')
-
-    if token_is?('(')
-      # Refer to symbol tabel
-      compile_token('(')
-      arg_count = compile_expression_list
-      compile_token(')')
-    else       
+      compile_first_token_for('subroutine_call')
       compile_token('.')
-      fn_name = fn_name + '.' + @tokenizer.token
+
+      el_name = @symbol_table.type_of(el_name) + '.' + @tokenizer.token
+      
       compile_subroutine_name
       compile_token('(')
-      arg_count = compile_expression_list
+
+      arg_count = compile_expression_list + 1
+
       compile_token(')')
+    else
+      compile_first_token_for('subroutine_call')
+      # Case: method call inside another method
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if token_is?('(')
+        # Note: first argument of the scope is 'this' by construction
+        @vm_writer.write_push('argument', 0)              
+
+        compile_token('(')
+        
+        arg_count = compile_expression_list + 1
+        
+        compile_token(')')
+      # Case: class function call
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      else       
+        compile_token('.')
+
+        el_name = el_name + '.' + @tokenizer.token
+        
+        compile_subroutine_name
+        compile_token('(')
+        
+        arg_count = compile_expression_list
+        
+        compile_token(')')
+      end      
     end
 
-    @vm_writer.write_call(fn_name, arg_count)
+    @vm_writer.write_call(el_name, arg_count)
   end
 
   private
@@ -552,8 +677,12 @@ class CompilationEngine
     @current_class_name = @tokenizer.token
   end
 
-  def set_current_subroutine_name
-    @current_subroutine_name = @tokenizer.token
+  def set_current_subroutine(name:, return_type:, subroutine_type:)
+    @current_subroutine = { 
+      name: name, 
+      return_type: return_type, 
+      subroutine_type: subroutine_type 
+    }
   end
 
   def initialize_symbol_table_subroutine()
@@ -564,7 +693,7 @@ class CompilationEngine
     @symbol_table.define(data)
   end
 
-  def operator_map(op)
+  def op_map(op)
     {
       '+' => 'add', 
       '-' => 'sub', 
@@ -574,5 +703,29 @@ class CompilationEngine
       '>' => 'gt', 
       '=' => 'eq',
     }[op]
+  end
+
+  def unary_op_map(op)
+    {
+      '-' => 'neg', 
+      '~' => 'not',
+    }[op]
+  end
+
+  def kind_to_segment_map(kind)
+    {
+     'STATIC' => 'static',
+      'FIELD' => 'this',
+      'ARG' => 'argument',
+      'VAR' => 'local',
+    }[kind]
+  end
+
+  def declarator_to_kind_map(d)
+    {
+      'static' => 'STATIC',
+      'field' => 'FIELD',
+      'var' => 'VAR',
+    }[d]
   end
 end

@@ -83,7 +83,7 @@ class SymbolTable
   end
 
   def num_locals
-    var_count(KIND[:ARG]) + var_count(KIND[:VAR])
+    var_count(KIND[:VAR])
   end
 
   private
