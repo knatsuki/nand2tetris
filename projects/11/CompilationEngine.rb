@@ -104,11 +104,18 @@ class CompilationEngine
 
     initialize_symbol_table_subroutine
     subroutine_type = @tokenizer.token
-    # If method/constructor, first argument is the instance object
-    if (subroutine_type == 'method' || subroutine_type == 'constructor')
+    # If method, first argument is the instance object
+    if (subroutine_type == 'method' )
       @symbol_table.define({
         name: 'this',
         kind: 'ARG',
+        type: @current_class_name
+      })
+    # If constructor, local variable is allocated for 'this'
+    elsif (subroutine_type == 'constructor')
+      @symbol_table.define({
+        name: 'this',
+        kind: 'VAR',
         type: @current_class_name
       })
     end
@@ -152,11 +159,20 @@ class CompilationEngine
     )
 
     # For constructor, we want to allocate memory for object in heap and set it to 'this'
-    # if (@current_subroutine[:subroutine_type] == 'constructor') 
-    #   @vm_writer.write_push('constant', @symbol_table.var_count('FIELD'))
-    #   @vm_writer.write_call('Memory.alloc', 1)
-    #   @vm_writer.write_pop('argument', 0)
-    # end
+    if (@current_subroutine[:subroutine_type] == 'constructor') 
+      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_index = @symbol_table.index_of('this')
+      @vm_writer.write_push('constant', @symbol_table.var_count('FIELD'))
+      @vm_writer.write_call('Memory.alloc', 1)
+      @vm_writer.write_pop(this_segment, this_index)
+      @vm_writer.write_push(this_segment, this_index)
+      @vm_writer.write_pop('pointer', 0)
+    elsif (@current_subroutine[:subroutine_type] == 'method')
+      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_index = @symbol_table.index_of('this')
+      @vm_writer.write_push(this_segment, this_index)
+      @vm_writer.write_pop('pointer', 0)
+    end
 
     compile_statements
     compile_token('}')
@@ -236,9 +252,13 @@ class CompilationEngine
 
     compile_first_token_for('do')
     compile_subroutine_call
-
     compile_token(';')
 
+    # do statement should not iterate stack. The returned
+    # element is thrown away. Note that void subroutine also returns
+    # a constant 0 by construction.
+    @vm_writer.write_pop('temp', 0)
+    
     end_terminal('doStatement')
   end
 
@@ -445,7 +465,10 @@ class CompilationEngine
     # Case: this
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     elsif token_is?('this')
-      @vm_writer.write_push('argument', 0)
+      this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+      this_index = @symbol_table.index_of('this')
+      @vm_writer.write_push(this_segment, this_index)              
+
       compile_first_token_for('term')
     # TODO: Case: stringConstant
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -496,11 +519,14 @@ class CompilationEngine
       # Case: method call inside another method
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if token_is?('(')
-        # Note: first argument of the scope is 'this' by construction
-        @vm_writer.write_push('argument', 0)              
+        el_name = @current_class_name + '.' + el_name
+        
+        this_segment = kind_to_segment_map(@symbol_table.kind_of('this'))
+        this_index = @symbol_table.index_of('this')
+        @vm_writer.write_push(this_segment, this_index)              
 
         compile_token('(')
-        
+      
         arg_count = compile_expression_list + 1
         
         compile_token(')')

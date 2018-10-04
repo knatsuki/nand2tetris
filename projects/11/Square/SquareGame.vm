@@ -1,4 +1,9 @@
-function SquareGame.new 0
+function SquareGame.new 1
+push constant 2
+call Memory.alloc 1
+pop local 0
+push local 0
+pop pointer 0
 push constant 0
 push constant 0
 push constant 30
@@ -6,16 +11,22 @@ call Square.new 3
 pop this 0
 push constant 0
 pop this 1
-push argument 0
+push local 0
 return
 function SquareGame.dispose 0
+push argument 0
+pop pointer 0
 push this 0
 call Square.dispose 1
+pop temp 0
 push argument 0
 call Memory.deAlloc 1
+pop temp 0
 push constant 0
 return
 function SquareGame.moveSquare 0
+push argument 0
+pop pointer 0
 push this 1
 push constant 1
 eq
@@ -23,6 +34,7 @@ not
 if-goto SquareGame_if_else_0
 push this 0
 call Square.moveUp 1
+pop temp 0
 goto SquareGame_if_end_0
 label SquareGame_if_else_0
 label SquareGame_if_end_0
@@ -33,6 +45,7 @@ not
 if-goto SquareGame_if_else_1
 push this 0
 call Square.moveDown 1
+pop temp 0
 goto SquareGame_if_end_1
 label SquareGame_if_else_1
 label SquareGame_if_end_1
@@ -43,6 +56,7 @@ not
 if-goto SquareGame_if_else_2
 push this 0
 call Square.moveLeft 1
+pop temp 0
 goto SquareGame_if_end_2
 label SquareGame_if_else_2
 label SquareGame_if_end_2
@@ -53,14 +67,18 @@ not
 if-goto SquareGame_if_else_3
 push this 0
 call Square.moveRight 1
+pop temp 0
 goto SquareGame_if_end_3
 label SquareGame_if_else_3
 label SquareGame_if_end_3
 push constant 5
 call Sys.wait 1
+pop temp 0
 push constant 0
 return
 function SquareGame.run 2
+push argument 0
+pop pointer 0
 push constant 0
 pop local 1
 label SquareGame_while_start_0
@@ -77,7 +95,8 @@ if-goto SquareGame_while_end_1
 call Keyboard.keyPressed 0
 pop local 0
 push argument 0
-call moveSquare 1
+call SquareGame.moveSquare 1
+pop temp 0
 goto SquareGame_while_start_1
 label SquareGame_while_end_1
 push local 0
@@ -98,6 +117,7 @@ not
 if-goto SquareGame_if_else_5
 push this 0
 call Square.decSize 1
+pop temp 0
 goto SquareGame_if_end_5
 label SquareGame_if_else_5
 label SquareGame_if_end_5
@@ -108,6 +128,7 @@ not
 if-goto SquareGame_if_else_6
 push this 0
 call Square.incSize 1
+pop temp 0
 goto SquareGame_if_end_6
 label SquareGame_if_else_6
 label SquareGame_if_end_6
@@ -161,7 +182,8 @@ if-goto SquareGame_while_end_2
 call Keyboard.keyPressed 0
 pop local 0
 push argument 0
-call moveSquare 1
+call SquareGame.moveSquare 1
+pop temp 0
 goto SquareGame_while_start_2
 label SquareGame_while_end_2
 goto SquareGame_while_start_0
